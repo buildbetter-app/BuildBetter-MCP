@@ -1,0 +1,31 @@
+{
+  "name": "BuildBetter-MCP",
+  "version": "0.0.1",
+  "description": "MCP server for querying Calls and Signals (from Transcripts to Tickets to Surveys) in BuildBetter.",
+  "author": "BuildBetter.ai (https://www.buildbetter.ai)",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsx index.ts"
+  },
+  "keywords": [
+    "BuildBetter",
+    "Call",
+    "Transcript",
+    "Signals"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "dotenv": "^16.3.1",
+    "graphql": "^16.8.1",
+    "graphql-request": "^6.1.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.3"
+  }
+}
