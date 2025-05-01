@@ -1,11 +1,13 @@
-# GraphQL MCP Server
+# BuildBetter MCP (Model-Context-Protocol) Server
 
-This Model Context Protocol (MCP) server provides a bridge between GraphQL databases and LLM applications, designed to:
+This repository contains **BuildBetter's official MCP adapter**.  It bridges the BuildBetter API ↔ LLMs (Claude, ChatGPT, etc.) allowing them to run safe, read-only queries and receive rich context.
 
-- Connect to your GraphQL database
-- Expose table schemas as resources
-- Provide tools for running read-only GraphQL queries
-- Include prompts for common data analysis tasks
+It is purpose-built to:
+
+- Connect to the BuildBetter's API endpoint
+- Expose BuildBetter's schema as browsable resources
+- Provide tools for running *read-only* BuildBetter queries (mutations are blocked)
+- Query for relevent data for BuildBetter data
 
 ## Features
 
