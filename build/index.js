@@ -8,7 +8,8 @@ import { CallToolRequestSchema, GetPromptRequestSchema, ListPromptsRequestSchema
 import { GraphQLClient, gql, } from 'graphql-request';
 import dotenv from 'dotenv';
 dotenv.config();
-const BUILDBETTER_ENDPOINT = process.env.BUILDBETTER_ENDPOINT || 'https://api.buildbetter.app/v1/graphql';
+// cspell:ignore BUILDBETTER
+const BUILDBETTER_ENDPOINT = process.env.BUILDBETTER_ENDPOINT || 'https://api-staging.buildbetter.app/v1/graphql';
 const BUILDBETTER_API_KEY = process.env.BUILDBETTER_API_KEY;
 const graphqlClient = new GraphQLClient(BUILDBETTER_ENDPOINT, {
     headers: {
@@ -18,7 +19,7 @@ const graphqlClient = new GraphQLClient(BUILDBETTER_ENDPOINT, {
 // Use the lower-level Server class
 const server = new Server({
     name: "BuildBetter's Data Explorer",
-    version: "1.0.0",
+    version: "0.0.1",
 }, {
     capabilities: {
         resources: { listChanged: true }, // Assuming listChanged is supported
@@ -89,17 +90,45 @@ function formatTypeForDisplay(type) {
 }
 // Helper to fetch field names for given type via introspection
 async function getTypeFields(typeName) {
-    const query = gql `query GetTypeFields($name: String!) { __type(name: $name) { ... on __Type { name kind fields { name } inputFields { name } } } }`;
+    const query = gql `
+    query GetTypeFields($name: String!) {
+      __type(name: $name) {
+        ... on __Type {
+          name
+          kind
+          fields {
+            name
+            type { ...TypeRef }
+          }
+          inputFields {
+            name
+            type { ...TypeRef }
+          }
+        }
+      }
+    }
+    fragment TypeRef on __Type {
+      kind
+      name
+      ofType {
+        kind
+        name
+        ofType { kind name ofType { kind name } } # Deeper nesting for complex types
+      }
+    }
+  `;
     const data = await graphqlClient.request(query, { name: typeName });
     const t = data.__type;
     if (!t)
         return [];
-    const names = [];
-    if (t.fields)
-        names.push(...t.fields.map((f) => f.name));
-    if (t.inputFields)
-        names.push(...t.inputFields.map((f) => f.name));
-    return names;
+    const fieldsWithType = [];
+    if (t.fields) {
+        fieldsWithType.push(...t.fields.map((f) => ({ name: f.name, type: f.type })));
+    }
+    if (t.inputFields) {
+        fieldsWithType.push(...t.inputFields.map((f) => ({ name: f.name, type: f.type })));
+    }
+    return fieldsWithType;
 }
 // --- End Helper Functions ---
 // --- Resource Handlers ---
@@ -131,6 +160,12 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
             mimeType: "text/markdown"
         },
         // Add more static resources or handle dynamic ones in ReadResource if needed
+        {
+            uri: "graphql://guide/practical-examples",
+            name: "Practical Query Examples",
+            description: "Ready-to-use examples for the most common scenarios with BuildBetter data",
+            mimeType: "text/markdown"
+        }
     ];
     return { resources };
 });
@@ -256,6 +291,119 @@ query CustomerObjections($start: timestamptz!) {
             const md = `# Common BuildBetter Queries\n\n## Recent Issues\n\n\`\`\`graphql\nquery RecentIssues {\n  extraction(\n    where: {\n      extraction_type_joins: { extraction_type: { name: {_eq: \"Issue\"} } }\n    },\n    order_by: { created_at: desc },\n    limit: 20\n  ) {\n    id\n    text\n    created_at\n    interview { id name created_at }\n  }\n}\n\`\`\`\n\n## Feature Requests (last 30 days)\n\n\`\`\`graphql\nquery RecentFeatureRequests {\n  extraction(\n    where: {\n      extraction_type_joins: { extraction_type: { name: {_eq: \"Feature Request\"} } },\n      created_at: { _gte: \"2025-05-01\" }\n    }\n  ) { id text interview { name } }\n}\n\`\`\`\n\n## Filter Extractions by Keyword\n\n\`\`\`graphql\nquery SearchExtractions($keyword: String!) {\n  extraction(where: { text: {_ilike: $keyword} }) { id text interview { name } }\n}\n\`\`\`\n`;
             return { contents: [{ uri, mimeType: "text/markdown", text: md }] };
         }
+        else if (parsedUri.pathname === "//guide/practical-examples") {
+            const practicalExamplesMd = `# Practical Query Examples for BuildBetter
+
+This guide provides ready-to-use examples for common scenarios.
+Replace placeholders like \`"PERSON_NAME"\`, \`"TOPIC_KEYWORD"\`, or date strings with actual values.
+
+## 1. Finding Recent Calls/Interviews with a Specific Person
+
+This uses a conceptual approach. The actual fields (\`person.name\`, \`interview.attendees\`, date fields) depend on your schema.
+
+\`\`\`graphql
+# Placeholder - Requires schema knowledge for exact fields
+query RecentCallsWithPerson($personName: String = "John Doe", $limit: Int = 5) {
+  interviews(
+    order_by: { created_at: desc }
+    where: {
+      attendees: { person: { name: { _ilike: $personName } } }
+      # or, if person is directly on interview:
+      # person: { name: { _ilike: $personName } }
+    }
+    limit: $limit
+  ) {
+    id
+    name
+    created_at
+    # Potentially attendees { person { name } }
+  }
+}
+\`\`\`
+
+## 2. Analyzing Customer Issues Over Time (e.g., last 30 days)
+
+This assumes 'Issue' is an extraction_type and extractions have a \`created_at\` field.
+
+\`\`\`graphql
+# Placeholder - Requires schema knowledge
+query CustomerIssuesLast30Days($limit: Int = 20, $sinceDate: timestamptz = "YYYY-MM-DD") {
+  extraction(
+    where: {
+      extraction_type_joins: { extraction_type: { name: { _eq: "Issue" } } }
+      # Assuming 'Customer' is a persona or can be filtered via speaker
+      # speaker: { person: { persona_id: { _eq: CUSTOMER_PERSONA_ID } } }
+      created_at: { _gte: $sinceDate }
+    }
+    order_by: { created_at: desc }
+    limit: $limit
+  ) {
+    id
+    text # or summary
+    created_at
+    interview { id name }
+  }
+}
+\`\`\`
+
+## 3. Tracking Discussions on Specific Topics
+
+This uses the \`search-extractions\` tool's underlying logic but as a direct query.
+
+\`\`\`graphql
+# Placeholder - Requires schema knowledge
+query TopicExtractions($topic: String = "integration", $limit: Int = 10) {
+  extraction(
+    where: {
+      _or: [
+        { text: { _ilike: $topic } },
+        { summary: { _ilike: $topic } }
+        # Add other relevant text fields
+      ]
+    }
+    order_by: { created_at: desc }
+    limit: $limit
+  ) {
+    id
+    text # or summary
+    created_at
+    interview { id name }
+  }
+}
+\`\`\`
+
+## 4. Monitoring Feature Requests and Complaints
+
+Similar to customer issues, but filtering by different extraction types.
+
+\`\`\`graphql
+# Placeholder - Requires schema knowledge
+query FeatureRequestsAndComplaints($limit: Int = 10, $sinceDate: timestamptz = "YYYY-MM-DD") {
+  extraction(
+    where: {
+      extraction_type_joins: {
+        extraction_type: {
+          name: { _in: ["Feature Request", "Complaint", "Bug Report"] }
+        }
+      }
+      created_at: { _gte: $sinceDate }
+    }
+    order_by: { created_at: desc }
+    limit: $limit
+  ) {
+    id
+    text
+    created_at
+    extraction_type_joins { extraction_type { name } }
+    interview { id name }
+  }
+}
+\`\`\`
+
+**Note:** These queries are illustrative. You'll need to adapt field names (\`attendees\`, \`person\`, \`extraction_type_joins\`, \`text\`, \`summary\`, \`created_at\`, etc.) and type names to match your specific BuildBetter GraphQL schema. Use the \`list-types\` and \`find-fields\` tools to discover the correct names.
+`;
+            return { contents: [{ uri, mimeType: "text/markdown", text: practicalExamplesMd }] };
+        }
     }
     // If URI doesn't match known patterns, throw a standard MCP error
     throw { code: -32002, message: "Resource not found", data: { uri } };
@@ -346,6 +494,70 @@ const toolsList = [
     },
     // Knowledge-graph tools -----------------------------
     // open_nodes tool removed
+    {
+        name: "recent-conversation-with",
+        description: "Find the most recent conversation with a specific person by name",
+        inputSchema: {
+            type: "object",
+            properties: {
+                name: { type: "string", description: "First or last name of the person to find" },
+                limit: { type: "number", description: "Optional: Maximum number of conversations to return (default: 1)" }
+            },
+            required: ["name"]
+        }
+    },
+    {
+        name: "top-customer-issues",
+        description: "Get the most common customer issues from extractions/signals",
+        inputSchema: {
+            type: "object",
+            properties: {
+                limit: { type: "number", description: "Optional: Number of issues to return (default: 10)" },
+                days: { type: "number", description: "Optional: Only include issues from the last N days (default: 30)" }
+            }
+        }
+    },
+    {
+        name: "topic-conversations",
+        description: "Find conversations discussing a specific topic",
+        inputSchema: {
+            type: "object",
+            properties: {
+                topic: { type: "string", description: "Topic/keyword to search for" },
+                limit: { type: "number", description: "Optional: Maximum number of conversations to return (default: 5)" }
+            },
+            required: ["topic"]
+        }
+    },
+    {
+        name: "query-template",
+        description: "Generate a query from predefined templates for common tasks",
+        inputSchema: {
+            type: "object",
+            properties: {
+                template: {
+                    type: "string",
+                    description: "Template name: find-person, recent-calls, call-with-topic, signal-by-type, etc."
+                },
+                parameters: {
+                    type: "object",
+                    description: "Parameters for the template (depends on template chosen)"
+                }
+            },
+            required: ["template"]
+        }
+    },
+    {
+        name: "validate-query",
+        description: "Check if a GraphQL query is valid before executing it",
+        inputSchema: {
+            type: "object",
+            properties: {
+                query: { type: "string", description: "The GraphQL query to validate" }
+            },
+            required: ["query"]
+        }
+    }
 ];
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     return { tools: toolsList };
@@ -368,7 +580,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
         }
         catch (error) {
-            return { content: [{ type: "text", text: `Error executing query: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            // Look for common errors and provide helpful suggestions
+            if (errorMsg.includes("field not found") || errorMsg.includes("Cannot query field")) { // Added common alternative phrasing
+                // Try to extract the field name from error
+                const fieldMatch = errorMsg.match(/field '([^']+)' not found/) || errorMsg.match(/Cannot query field "([^"]+)" on type/);
+                const fieldName = fieldMatch && fieldMatch[1] ? fieldMatch[1] : "unknown";
+                // Placeholder for suggestSimilarFields
+                const similarFieldsSuggestion = "[similar field suggestions pending implementation]";
+                return {
+                    content: [{
+                            type: "text",
+                            text: `Error: Field '${fieldName}' not found or not queryable on the specified type. Try using the 'find-fields' tool first to check available fields for the relevant type, or consider these similar fields: ${similarFieldsSuggestion}. Original error: ${errorMsg}`
+                        }],
+                    isError: true
+                };
+            }
+            // Generic error handling
+            return {
+                content: [{ type: "text", text: `Error executing query: ${errorMsg}` }],
+                isError: true
+            };
         }
     }
     else if (toolName === "list-types") {
@@ -444,7 +676,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             "content",
         ];
         const extractionFields = await getTypeFields("extraction");
-        const textField = candidateTextFields.find((f) => extractionFields.includes(f));
+        const textField = candidateTextFields.find((f) => extractionFields.some(ef => ef.name === f));
         if (!textField) {
             return {
                 content: [
@@ -461,43 +693,93 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             "types",
         ];
         const boolFieldsAll = await getTypeFields("extraction_bool_exp");
-        const joinFieldForFilter = candidateJoinFields.find((f) => boolFieldsAll.includes(f)) || null;
+        const joinFieldForFilter = candidateJoinFields.find((f) => boolFieldsAll.some(bf => bf.name === f)) || null;
         // 3. Choose a join field for selection so the resulting JSON has type names – use the same name if it exists on the object
-        const joinFieldForSelection = candidateJoinFields.find((f) => extractionFields.includes(f)) || null;
+        const joinFieldForSelection = candidateJoinFields.find((f) => extractionFields.some(ef => ef.name === f)) || null;
         // --- Build query pieces ---
-        const whereText = `${textField}: {_ilike: \"%${phrase}%\"}`;
+        // Smart Defaults for text search: search in multiple candidate fields
+        const smartSearchableFields = ["summary", "exact_quote", "text", "context"]
+            .filter(fieldName => extractionFields.some(ef => ef.name === fieldName));
+        let whereTextCondition;
+        if (smartSearchableFields.length > 0) {
+            const orConditions = smartSearchableFields.map(field => `{ ${field}: {_ilike: "%${phrase}%"} }` // Each condition is an object
+            ).join(", ");
+            whereTextCondition = smartSearchableFields.length > 1
+                ? `_or: [${orConditions}]`
+                : orConditions.slice(2, -2); // Remove surrounding { } if only one field
+        }
+        else if (textField) { // Fallback to the single textField if smart fields aren't found (should not happen if textField logic is sound)
+            whereTextCondition = `${textField}: {_ilike: "%${phrase}%"}`;
+        }
+        else {
+            // This case should ideally be prevented by the textField check earlier
+            return { content: [{ type: "text", text: "Error: No searchable text field found for extractions." }], isError: true };
+        }
         const limitClause = limit && Number.isInteger(limit) && limit > 0 ? `, limit: ${limit}` : "";
         const joinFilter = extType && joinFieldForFilter
             ? `${joinFieldForFilter}: { extraction_type: { name: {_eq: \"${extType}\"} } }`
             : "";
-        let whereCombined = [whereText, joinFilter].filter(Boolean).join(", ");
+        // Combine text search, join filter, and potentially other conditions
+        const allWhereConditions = [whereTextCondition, joinFilter].filter(Boolean);
+        let whereCombined = allWhereConditions.join(", ");
         // include interview relation only if present on extraction type
-        if (extractionFields.includes("interview")) {
-            whereCombined = whereCombined ? `${whereCombined}, interview: { id: {_eq: true} }` : "interview: { id: {_eq: true} }";
+        // This logic seems to try to force an interview relation, which might not be what's intended.
+        // Commenting out for now as it might be overly restrictive or incorrect without more context.
+        // if (extractionFields.some(f => f.name === "interview")) {
+        //   whereCombined = whereCombined ? `${whereCombined}, interview: { id: {_is_null: false} }` : "interview: { id: {_is_null: false} }";
+        // }
+        // Instead, let's ensure the base 'where' conditions are correctly structured if multiple exist
+        if (allWhereConditions.length > 1) {
+            // If we have multiple top-level conditions (e.g. _or from text search AND a joinFilter)
+            // they should typically be siblings in the where object, or under an _and if necessary.
+            // For now, simple comma separation assumes they are sibling properties.
+            // If more complex logic (like _and) is needed, this needs refinement.
+        }
+        // include personaIds filter
+        if (personaIds && personaIds.length > 0 && extractionFields.some(f => f.name === "speaker")) {
+            const personaFilter = `speaker: { person: { persona_id: {_in: [${personaIds.join(',')}]} } }`;
+            whereCombined = whereCombined ? `${whereCombined}, ${personaFilter}` : personaFilter;
+        }
+        // Final check for an empty whereCombined, which is invalid GraphQL
+        if (!whereCombined.trim()) {
+            // If phrase was the only thing and it didn't find fields, or other logic paths lead here.
+            // We might default to a less restrictive query or return an error.
+            // For now, let's assume if phrase is given, whereCombined will be non-empty.
+            // If it can be empty, an error or default (like empty where: {}) might be needed.
+        }
+        // include interview relation only if present on extraction type
+        if (extractionFields.some(f => f.name === "interview")) {
+            // This was previously modifying whereCombined.
+            // It's more about what's *selected* than filtered, unless the intent was to only get extractions *with* interviews.
+            // The selection part handles adding interview fields.
+            // If the filter `interview: { id: {_eq: true} }` was intentional, it should be part of the `allWhereConditions` logic.
+            // For now, I'm removing its modification to `whereCombined` here as it was unclear and potentially problematic.
+            // The original line was:
+            // whereCombined = whereCombined ? `${whereCombined}, interview: { id: {_eq: true} }` : "interview: { id: {_eq: true} }";
         }
         // include join relation and map to correct nested field name
         if (joinFieldForSelection) {
             // Determine nested field (some schemas use 'type', others 'extraction_type')
             const joinNestedFields = await getTypeFields("extraction_type_join");
-            const nestedFieldName = joinNestedFields.includes("extraction_type") ? "extraction_type" : joinNestedFields.includes("type") ? "type" : null;
+            const nestedFieldName = joinNestedFields.some(f => f.name === "extraction_type") ? "extraction_type" : joinNestedFields.some(f => f.name === "type") ? "type" : null;
             if (nestedFieldName) {
                 whereCombined = whereCombined ? `${whereCombined}, ${joinFieldForSelection} { ${nestedFieldName} { name } }` : `${joinFieldForSelection} { ${nestedFieldName} { name } }`;
             }
         }
         // include personaIds filter
-        if (personaIds && personaIds.length > 0 && extractionFields.includes("speaker")) {
+        if (personaIds && personaIds.length > 0 && extractionFields.some(f => f.name === "speaker")) {
             whereCombined = whereCombined ? `${whereCombined}, speaker: { person: { persona_id: {_in: [${personaIds.join(',')}]} } }` : `speaker: { person: { persona_id: {_in: [${personaIds.join(',')}]} } }`;
         }
         const selectionFields = ["id", textField, "created_at"];
         // include interview relation only if present on extraction type
-        if (extractionFields.includes("interview")) {
+        if (extractionFields.some(f => f.name === "interview")) {
             selectionFields.push("interview { id name created_at }");
         }
         // include join relation and map to correct nested field name
         if (joinFieldForSelection) {
             // Determine nested field (some schemas use 'type', others 'extraction_type')
             const joinNestedFields = await getTypeFields("extraction_type_join");
-            const nestedFieldName = joinNestedFields.includes("extraction_type") ? "extraction_type" : joinNestedFields.includes("type") ? "type" : null;
+            const nestedFieldName = joinNestedFields.some(f => f.name === "extraction_type") ? "extraction_type" : joinNestedFields.some(f => f.name === "type") ? "type" : null;
             if (nestedFieldName) {
                 selectionFields.push(`${joinFieldForSelection} { ${nestedFieldName} { name } }`);
             }
@@ -529,20 +811,74 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             };
         }
     }
+    else if (toolName === "recent-conversation-with") {
+        const name = args?.name;
+        const limit = args?.limit; // Default: 1
+        if (!name) {
+            return { content: [{ type: "text", text: "Error: 'name' argument is required." }], isError: true };
+        }
+        // Placeholder implementation
+        return { content: [{ type: "text", text: `Tool 'recent-conversation-with' called with name: ${name}, limit: ${limit ?? 1}. Implementation pending.` }] };
+    }
+    else if (toolName === "top-customer-issues") {
+        const limit = args?.limit; // Default: 10
+        const days = args?.days; // Default: 30
+        // Placeholder implementation
+        return { content: [{ type: "text", text: `Tool 'top-customer-issues' called with limit: ${limit ?? 10}, days: ${days ?? 30}. Implementation pending.` }] };
+    }
+    else if (toolName === "topic-conversations") {
+        const topic = args?.topic;
+        const limit = args?.limit; // Default: 5
+        if (!topic) {
+            return { content: [{ type: "text", text: "Error: 'topic' argument is required." }], isError: true };
+        }
+        // Placeholder implementation
+        return { content: [{ type: "text", text: `Tool 'topic-conversations' called with topic: ${topic}, limit: ${limit ?? 5}. Implementation pending.` }] };
+    }
+    else if (toolName === "query-template") {
+        const template = args?.template;
+        const parameters = args?.parameters;
+        if (!template) {
+            return { content: [{ type: "text", text: "Error: 'template' argument is required." }], isError: true };
+        }
+        // Placeholder implementation
+        // Actual implementation would involve a switch/map for template names
+        // and constructing GraphQL queries based on templates and parameters.
+        return { content: [{ type: "text", text: `Tool 'query-template' called with template: ${template}, parameters: ${JSON.stringify(parameters)}. Implementation pending.` }] };
+    }
     else if (toolName === "find-fields") {
         const typeName = args?.typeName;
         if (!typeName) {
             return { content: [{ type: "text", text: "Error: 'typeName' argument is required." }], isError: true };
         }
         try {
-            const names = await getTypeFields(typeName);
-            if (names.length === 0) {
+            const fields = await getTypeFields(typeName); // Renamed from names to fields
+            if (fields.length === 0) {
                 return { content: [{ type: "text", text: `Type '${typeName}' not found or has no fields.` }] };
             }
-            return { content: [{ type: "text", text: `Fields for ${typeName}:\n\n` + names.join('\n') }] };
+            // Updated to include field types using formatTypeForDisplay
+            const fieldsWithTypes = fields.map(field => `${field.name}: ${formatTypeForDisplay(field.type)}`).join('\n');
+            return { content: [{ type: "text", text: `Fields for ${typeName}:\n\n` + fieldsWithTypes }] };
         }
         catch (error) {
             return { content: [{ type: "text", text: `Error introspecting type: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+        }
+    }
+    else if (toolName === "validate-query") {
+        const query = args?.query;
+        if (!query) {
+            return { content: [{ type: "text", text: "Error: 'query' argument is required." }], isError: true };
+        }
+        // Placeholder implementation
+        // Actual implementation might involve using a GraphQL parsing library
+        // or a dry-run validation endpoint if available.
+        try {
+            // Attempt to parse with gql as a very basic syntax check
+            gql `${query}`;
+            return { content: [{ type: "text", text: "Query syntax appears valid (basic check). Full validation pending implementation." }] };
+        }
+        catch (e) {
+            return { content: [{ type: "text", text: `Query syntax error: ${e.message}` }], isError: true };
         }
     }
     else if (toolName === "open-resource" || toolName === "read-resource") {

@@ -2,6 +2,14 @@
 
 This repository contains **BuildBetter's official MCP adapter**.  It bridges the BuildBetter API ↔ LLMs (Claude, ChatGPT, etc.) allowing them to run safe, read-only queries and receive rich context.
 
+## 🚀 Open Beta: Request Access!
+
+This adapter is currently in a **Request-Access Open Beta**. To get started:
+
+- **Email us at `support@buildbetter.app` to request your API key.**
+- This feature is **free on all plans** while in beta.
+- It can be used with **any MCP client** that supports custom servers.
+
 It is purpose-built to:
 
 - Connect to the BuildBetter's API endpoint
