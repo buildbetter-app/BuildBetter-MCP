@@ -115,4 +115,4 @@ npm run dev
 
 ## License
 
-[MIT](LICENSE)
+All Rights Reserved
