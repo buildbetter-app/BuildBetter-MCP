@@ -46,7 +46,7 @@ interface GraphQLOutputType {
 dotenv.config();
 
 // cspell:ignore BUILDBETTER
-const BUILDBETTER_ENDPOINT = process.env.BUILDBETTER_ENDPOINT || 'https://api-staging.buildbetter.app/v1/graphql';
+const BUILDBETTER_ENDPOINT = process.env.BUILDBETTER_ENDPOINT || 'https://api.buildbetter.app/v1/graphql';
 const BUILDBETTER_API_KEY = process.env.BUILDBETTER_API_KEY;
 
 const graphqlClient = new GraphQLClient(BUILDBETTER_ENDPOINT, {
