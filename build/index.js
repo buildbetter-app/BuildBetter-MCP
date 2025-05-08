@@ -113,7 +113,7 @@ async function getTypeFields(typeName) {
       ofType {
         kind
         name
-        ofType { kind name ofType { kind name } } # Deeper nesting for complex types
+        ofType { kind name ofType { kind name ofType { kind name } } } # Deeper nesting for complex types
       }
     }
   `;
@@ -261,7 +261,7 @@ const queryTemplates = {
           where: {
             types: {
               type: {
-                name: {_eq: "${type}"}
+                name: {_eq: ${type}}
               }
             }
             ${dateFilter}
@@ -832,6 +832,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
+            if (errorMsg.includes("expected an enum value") && errorMsg.includes("but found a string")) {
+                return {
+                    content: [{
+                            type: "text",
+                            text: `Error: Invalid enum value. Enum values should be used directly without quotes (e.g., \`type: {_eq: issue}\` not \`type: {_eq: "issue"}\`). Check available enum values using 'find-fields' on the enum type or by listing the types. Original error: ${errorMsg}`
+                        }],
+                    isError: true
+                };
+            }
             // Look for common errors and provide helpful suggestions
             if (errorMsg.includes("field not found") || errorMsg.includes("Cannot query field")) { // Added common alternative phrasing
                 // Try to extract the field name from error
