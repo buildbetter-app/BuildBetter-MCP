@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/buildbetter-app-buildbetter-mcp-badge.png)](https://mseep.ai/app/buildbetter-app-buildbetter-mcp)
+
 # BuildBetter MCP (Model-Context-Protocol) Server
 
 This repository contains **BuildBetter's official MCP adapter**.  It bridges the BuildBetter API ↔ LLMs (Claude, ChatGPT, etc.) allowing them to run safe, read-only queries and receive rich context.
